@@ -3,36 +3,27 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useEffect, useRef } from "react";
-import { resolveUserRole } from "@/lib/auth-role";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { resolveUserRole, hasPermission, ROLE_LABELS, type UserRole } from "@/lib/auth-role";
 import { createClient } from "@/lib/supabase/client";
 import toast from "react-hot-toast";
+import { motion, AnimatePresence } from "framer-motion";
 
 // ─── أيقونات SVG ──────────────────────────────────────────────────────────────
 const Icons = {
   dashboard: (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10-3a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1v-7z" />
-    </svg>
-  ),
-  orders: (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
     </svg>
   ),
   products: (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
     </svg>
   ),
-  messages: (
+  inventory: (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-    </svg>
-  ),
-  clients: (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
     </svg>
   ),
   settings: (
@@ -46,9 +37,20 @@ const Icons = {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
     </svg>
   ),
+  // أيقونة الجرس المحسنة
   bell: (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+    <svg
+      className="w-5 h-5 md:w-5 md:h-5"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+      strokeWidth={1.8}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0"
+      />
     </svg>
   ),
   menu: (
@@ -66,45 +68,69 @@ const Icons = {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
     </svg>
   ),
+  production: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+    </svg>
+  ),
+  users: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+    </svg>
+  ),
 };
 
-// ─── Badge للأرقام ────────────────────────────────────────────────────────────
+// ─── Badge للأرقام ─────────────────────────────────────────────────────────────
 const NotifBadge = ({ count, active }: { count: number; active: boolean }) => {
   if (!count || count <= 0) return null;
   return (
-    <span
-      className={`min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-black flex items-center justify-center tabular-nums leading-none transition-all ${
-        active
-          ? "bg-white text-primary shadow-sm"
-          : "bg-red-500 text-white shadow-[0_2px_6px_rgba(239,68,68,0.5)]"
-      }`}
-    >
+    <span className={`min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-black flex items-center justify-center tabular-nums leading-none transition-all ${active ? "bg-white text-primary shadow-sm" : "bg-red-500 text-white shadow-[0_2px_6px_rgba(239,68,68,0.5)]"
+      }`}>
       {count > 99 ? "99+" : count}
     </span>
   );
 };
 
-// ─── Layout ───────────────────────────────────────────────────────────────────
+// ─── Layout ────────────────────────────────────────────────────────────────────
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const pathname  = usePathname();
-  const router    = useRouter();
-  const supabase  = createClient();
+  const pathname = usePathname();
+  const router = useRouter();
+  const supabase = createClient();
 
-  const [isSidebarOpen,     setIsSidebarOpen]     = useState(true);
-  const [isMobileOpen,      setIsMobileOpen]       = useState(false);
-  const [isLoggedIn,        setIsLoggedIn]         = useState(false);
-  const [isAdmin,           setIsAdmin]            = useState(false);
-  const [adminName,         setAdminName]          = useState("مدير النظام");
-  const [showNotifications, setShowNotifications]  = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userRole, setUserRole] = useState<UserRole>("customer");
+  const [adminName, setAdminName] = useState("مدير المصنع");
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [products, setProducts] = useState<any[]>([]);
   const [notifications, setNotifications] = useState({
-    pendingOrders:      0,
-    newMessages:        0,
+    lowStockProducts: 0,
+    outOfStockProducts: 0,
+    criticalStockProducts: 0,
     totalNotifications: 0,
   });
 
   const notifRef = useRef<HTMLDivElement>(null);
 
-  // ── إغلاق الـ dropdown لو ضغط برا ──────────────────────────────────────────
+  // ── جلب المنتجات لحساب المخزون ─────────────────────────────────────────────
+  const fetchProducts = async () => {
+    const { data } = await supabase.from("products").select("*");
+    if (data) {
+      setProducts(data);
+      const lowStock = data.filter(p => (p.quantity || 0) <= (p.min_stock || 10)).length;
+      const outOfStock = data.filter(p => (p.quantity || 0) === 0).length;
+      const criticalStock = data.filter(p => (p.quantity || 0) > 0 && (p.quantity || 0) <= (p.min_stock || 10) / 2).length;
+      setNotifications({
+        lowStockProducts: lowStock,
+        outOfStockProducts: outOfStock,
+        criticalStockProducts: criticalStock,
+        totalNotifications: lowStock,
+      });
+    }
+  };
+
+  // ── إغلاق الـ dropdown لو ضغط برا ─────────────────────────────────────────
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
@@ -115,10 +141,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // ── إغلاق الموبايل sidebar عند تغيير الصفحة ───────────────────────────────
+  // ── إغلاق الموبايل sidebar عند تغيير الصفحة ──────────────────────────────
   useEffect(() => { setIsMobileOpen(false); }, [pathname]);
 
-  // ── التحقق من الصلاحيات ────────────────────────────────────────────────────
+  // ── التحقق من الصلاحيات ───────────────────────────────────────────────────
   useEffect(() => {
     const checkAuth = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -130,46 +156,107 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         .eq("id", user.id)
         .single();
 
-      const userRole = resolveUserRole(user.email, profile?.role);
-      if (userRole !== "admin") { router.push("/"); return; }
+      // تحقق من user_roles أولاً (للموظفين)
+      const { data: userRoleData } = await supabase
+        .from("user_roles")
+        .select("role, name, is_active")
+        .eq("user_id", user.id)
+        .single();
+
+      const resolvedRole = resolveUserRole(
+        user.email,
+        userRoleData?.role || profile?.role
+      );
+
+      // لو مش عنده صلاحية dashboard خالص
+      if (!hasPermission(resolvedRole, "canViewDashboard")) {
+        router.push("/login");
+        return;
+      }
+
+      // لو الموظف مش active
+      if (userRoleData && !userRoleData.is_active) {
+        toast.error("حسابك موقوف، تواصل مع المدير");
+        await supabase.auth.signOut();
+        router.push("/login");
+        return;
+      }
 
       setIsLoggedIn(true);
-      setIsAdmin(true);
-      if (profile?.name) setAdminName(profile.name);
+      setUserRole(resolvedRole);
+      const name = userRoleData?.name || profile?.name;
+      if (name) setAdminName(name);
+
+      fetchProducts();
     };
     checkAuth();
-  }, [router, supabase]);
+  }, [router]);
 
-  // ── جلب الإشعارات ──────────────────────────────────────────────────────────
+  // تحديث الإشعارات كل 30 ثانية
   useEffect(() => {
     if (!isLoggedIn) return;
-
-    const fetchNotifications = async () => {
-      const [{ count: pendingCount }, { count: messagesCount }] = await Promise.all([
-        supabase.from("orders").select("*", { count: "exact", head: true }).eq("status", "pending"),
-        supabase.from("contacts").select("*", { count: "exact", head: true }).eq("status", "new"),
-      ]);
-      setNotifications({
-        pendingOrders:      pendingCount  || 0,
-        newMessages:        messagesCount || 0,
-        totalNotifications: (pendingCount || 0) + (messagesCount || 0),
-      });
-    };
-
-    fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30_000);
+    const interval = setInterval(fetchProducts, 30000);
     return () => clearInterval(interval);
-  }, [isLoggedIn, supabase]);
+  }, [isLoggedIn]);
 
-  // ── روابط الـ sidebar ───────────────────────────────────────────────────────
-  const adminLinks = [
-    { href: "/dashboard",          label: "الرئيسية",  icon: Icons.dashboard, badge: 0 },
-    { href: "/dashboard/orders",   label: "الطلبات",   icon: Icons.orders,    badge: notifications.pendingOrders },
-    { href: "/dashboard/products", label: "المنتجات",  icon: Icons.products,  badge: 0 },
-    { href: "/dashboard/messages", label: "الرسائل",   icon: Icons.messages,  badge: notifications.newMessages },
-    { href: "/dashboard/clients",  label: "العملاء",   icon: Icons.clients,   badge: 0 },
-    { href: "/dashboard/settings", label: "الإعدادات", icon: Icons.settings,  badge: 0 },
+  // المنتجات الناقصة (أعلى 3)
+  const lowStockProductsList = useMemo(() => {
+    return products
+      .filter(p => (p.quantity || 0) <= (p.min_stock || 10))
+      .sort((a, b) => ((a.quantity || 0) / (a.min_stock || 10)) - ((b.quantity || 0) / (b.min_stock || 10)))
+      .slice(0, 3);
+  }, [products]);
+
+  // ── روابط الـ sidebar (حسب الصلاحيات) ────────────────────────────────────
+  const allLinks = [
+    {
+      href: "/dashboard",
+      label: "الرئيسية",
+      icon: Icons.dashboard,
+      badge: 0,
+      permission: "canViewDashboard" as const,
+    },
+    {
+      href: "/dashboard/inventory",
+      label: "المخزون",
+      icon: Icons.inventory,
+      badge: notifications.lowStockProducts,
+      permission: "canViewInventory" as const,
+    },
+    {
+      href: "/dashboard/products",
+      label: "المنتجات",
+      icon: Icons.products,
+      badge: 0,
+      permission: "canViewProducts" as const,
+    },
+    {
+      href: "/dashboard/production",
+      label: "الإنتاج",
+      icon: Icons.production,
+      badge: 0,
+      permission: "canViewProduction" as const,
+    },
+    {
+      href: "/dashboard/users",
+      label: "المستخدمين",
+      icon: Icons.users,
+      badge: 0,
+      permission: "canEditSettings" as const, // admin فقط
+    },
+    {
+      href: "/dashboard/settings",
+      label: "الإعدادات",
+      icon: Icons.settings,
+      badge: 0,
+      permission: "canViewSettings" as const,
+    },
   ];
+
+  // فلترة الروابط حسب صلاحية المستخدم
+  const adminLinks = allLinks.filter(link =>
+    hasPermission(userRole, link.permission)
+  );
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -179,15 +266,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     router.push("/login");
   };
 
-  const currentLabel = adminLinks.find((l) => l.href === pathname)?.label || "لوحة التحكم";
-  const initials = adminName
-    .split(" ")
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase();
+  const currentLabel = adminLinks.find((l) => l.href === pathname)?.label || "الرئيسية";
+  const initials = adminName.split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+  const roleLabel = ROLE_LABELS[userRole] || "مستخدم";
 
-  if (!isLoggedIn || !isAdmin) {
+  if (!isLoggedIn) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center gap-4">
@@ -201,7 +284,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     );
   }
 
-  // ── مكوّن الـ Sidebar الداخلي ────────────────────────────────────────────────
+  // ── مكوّن الـ Sidebar الداخلي ──────────────────────────────────────────────
   const SidebarContent = ({ collapsed }: { collapsed: boolean }) => (
     <div className="flex flex-col h-full">
       {/* Logo */}
@@ -212,7 +295,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {!collapsed && (
           <div className="overflow-hidden">
             <p className="font-black text-white text-sm leading-tight">مصنع الإبداع</p>
-            <p className="text-white/40 text-xs">لوحة التحكم</p>
+            <p className="text-white/40 text-xs">نظام إدارة المصنع</p>
           </div>
         )}
       </div>
@@ -220,31 +303,25 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       {/* Nav */}
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
         {adminLinks.map((link) => {
-          const isActive = pathname === link.href;
+          const isActive = pathname === link.href || (link.href !== "/dashboard" && pathname.startsWith(link.href));
           const hasBadge = link.badge > 0;
-
           return (
             <Link
               key={link.href}
               href={link.href}
               title={collapsed ? link.label : undefined}
-              className={`relative flex items-center rounded-xl transition-all duration-200 group ${
-                collapsed ? "justify-center p-3" : "gap-3 px-3.5 py-2.5"
-              } ${
-                isActive
+              className={`relative flex items-center rounded-xl transition-all duration-200 group ${collapsed ? "justify-center p-3" : "gap-3 px-3.5 py-2.5"
+                } ${isActive
                   ? "bg-white/12 text-white shadow-inner border border-white/10"
                   : "text-white/55 hover:text-white hover:bg-white/8"
-              }`}
+                }`}
             >
-              {/* Active indicator */}
               {isActive && (
                 <span className="absolute right-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-primary-light rounded-full" />
               )}
-
-              <span className={`shrink-0 transition-transform duration-200 ${isActive ? "text-white" : "text-white/55 group-hover:text-white"} ${isActive ? "" : "group-hover:scale-110"}`}>
+              <span className={`shrink-0 transition-transform duration-200 ${isActive ? "text-white" : "text-white/55 group-hover:text-white group-hover:scale-110"}`}>
                 {link.icon}
               </span>
-
               {!collapsed && (
                 <>
                   <span className={`flex-1 text-sm font-semibold ${isActive ? "text-white" : ""}`}>
@@ -253,8 +330,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   {hasBadge && <NotifBadge count={link.badge} active={isActive} />}
                 </>
               )}
-
-              {/* Collapsed badge dot */}
               {collapsed && hasBadge && (
                 <span className="absolute top-1.5 left-1.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-secondary-dark" />
               )}
@@ -265,7 +340,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
       {/* Admin Info + Logout */}
       <div className="p-3 border-t border-white/8 space-y-1">
-        {/* Admin card */}
         {!collapsed && (
           <div className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/8 mb-1">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center shrink-0 shadow">
@@ -273,18 +347,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </div>
             <div className="overflow-hidden flex-1 min-w-0">
               <p className="text-white text-xs font-bold truncate">{adminName}</p>
-              <p className="text-white/40 text-[10px]">مدير النظام</p>
+              <p className="text-white/40 text-[10px]">{roleLabel}</p>
             </div>
             <span className="w-2 h-2 bg-green-400 rounded-full shrink-0 shadow-[0_0_6px_rgba(74,222,128,0.8)]" title="متصل" />
           </div>
         )}
-
         <button
           onClick={handleLogout}
           title={collapsed ? "تسجيل الخروج" : undefined}
-          className={`flex items-center w-full rounded-xl text-white/50 hover:text-red-400 hover:bg-red-500/10 transition-all duration-200 group ${
-            collapsed ? "justify-center p-3" : "gap-3 px-3.5 py-2.5"
-          }`}
+          className={`flex items-center w-full rounded-xl text-white/50 hover:text-red-400 hover:bg-red-500/10 transition-all duration-200 group ${collapsed ? "justify-center p-3" : "gap-3 px-3.5 py-2.5"
+            }`}
         >
           <span className="shrink-0 group-hover:scale-110 transition-transform">{Icons.logout}</span>
           {!collapsed && <span className="text-sm font-semibold">تسجيل الخروج</span>}
@@ -296,16 +368,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: "var(--bg-muted, #f7f2eb)" }}>
 
-      {/* ── Desktop Sidebar ─────────────────────────────────────────────────── */}
+      {/* Desktop Sidebar */}
       <aside
-        className={`hidden lg:flex flex-col relative bg-gradient-to-b shrink-0 transition-all duration-300 ease-in-out ${
-          isSidebarOpen ? "w-64" : "w-[72px]"
-        }`}
+        className={`hidden lg:flex flex-col relative bg-gradient-to-b shrink-0 transition-all duration-300 ease-in-out ${isSidebarOpen ? "w-64" : "w-[72px]"}`}
         style={{ background: "linear-gradient(180deg, var(--secondary) 0%, var(--secondary-dark) 100%)" }}
       >
         <SidebarContent collapsed={!isSidebarOpen} />
-
-        {/* Toggle button */}
         <button
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
           className="absolute -left-3 top-20 w-6 h-6 rounded-full bg-white border border-gray-200 shadow-md flex items-center justify-center text-gray-500 hover:text-primary hover:border-primary/30 transition-all z-20"
@@ -314,43 +382,31 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </button>
       </aside>
 
-      {/* ── Mobile Sidebar Overlay ───────────────────────────────────────────── */}
+      {/* Mobile Sidebar Overlay */}
       {isMobileOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden"
-          onClick={() => setIsMobileOpen(false)}
-        />
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsMobileOpen(false)} />
       )}
       <aside
-        className={`fixed top-0 right-0 h-full w-72 z-50 lg:hidden flex flex-col transition-transform duration-300 ${
-          isMobileOpen ? "translate-x-0" : "translate-x-full"
-        }`}
+        className={`fixed top-0 right-0 h-full w-72 z-50 lg:hidden flex flex-col transition-transform duration-300 ${isMobileOpen ? "translate-x-0" : "translate-x-full"}`}
         style={{ background: "linear-gradient(180deg, var(--secondary) 0%, var(--secondary-dark) 100%)" }}
       >
         <SidebarContent collapsed={false} />
       </aside>
 
-      {/* ── Main ────────────────────────────────────────────────────────────── */}
+      {/* Main */}
       <main className="flex-1 flex flex-col overflow-hidden min-w-0">
 
         {/* Top Bar */}
         <header className="bg-white border-b border-gray-100 shadow-sm shrink-0 z-30">
           <div className="flex items-center justify-between px-4 md:px-6 h-14 md:h-16">
 
-            {/* Left: menu + title */}
             <div className="flex items-center gap-3">
-              {/* Mobile menu btn */}
-              <button
-                onClick={() => setIsMobileOpen(true)}
-                className="lg:hidden p-2 rounded-xl text-gray-500 hover:bg-gray-100 hover:text-secondary transition-colors"
-              >
+              <button onClick={() => setIsMobileOpen(true)} className="lg:hidden p-2 rounded-xl text-gray-500 hover:bg-gray-100 hover:text-secondary transition-colors">
                 {Icons.menu}
               </button>
-
-              {/* Breadcrumb */}
               <div className="flex items-center gap-2">
                 <span className="text-gray-400 text-sm hidden sm:block">لوحة التحكم</span>
-                {currentLabel !== "لوحة التحكم" && (
+                {currentLabel !== "الرئيسية" && (
                   <>
                     <svg className="w-4 h-4 text-gray-300 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -358,117 +414,134 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     <span className="text-sm font-black text-secondary">{currentLabel}</span>
                   </>
                 )}
-                {currentLabel === "لوحة التحكم" && (
-                  <span className="text-sm font-black text-secondary sm:hidden">لوحة التحكم</span>
+                {currentLabel === "الرئيسية" && (
+                  <span className="text-sm font-black text-secondary sm:hidden">الرئيسية</span>
                 )}
               </div>
             </div>
 
-            {/* Right: actions */}
             <div className="flex items-center gap-2 md:gap-3">
 
               {/* Notification Bell */}
               <div className="relative" ref={notifRef}>
                 <button
                   onClick={() => setShowNotifications(!showNotifications)}
-                  className={`relative p-2 rounded-xl transition-all duration-200 ${
-                    showNotifications
+                  className={`
+      relative p-2 rounded-xl transition-all duration-200 
+      ${showNotifications
                       ? "bg-primary/10 text-primary"
                       : "text-gray-500 hover:bg-gray-100 hover:text-secondary"
-                  }`}
+                    }
+      focus:outline-none focus:ring-2 focus:ring-primary/20
+    `}
+                  aria-label="الإشعارات"
                 >
                   {Icons.bell}
                   {notifications.totalNotifications > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center tabular-nums ring-2 ring-white">
+                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center tabular-nums ring-2 ring-white shadow-sm">
                       {notifications.totalNotifications > 9 ? "9+" : notifications.totalNotifications}
                     </span>
                   )}
                 </button>
 
-                {/* Dropdown */}
-                {showNotifications && (
-                  <div className="absolute left-0 md:left-auto md:right-0 top-full mt-2 w-80 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden">
-                    <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50/50">
-                      <h3 className="font-black text-secondary text-sm">الإشعارات</h3>
+                {/* Dropdown - تظهر أسفل الزر وتختفي عند الضغط برا */}
+                <AnimatePresence>
+                  {showNotifications && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 15, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 15, scale: 0.95 }}
+                      transition={{ duration: 0.2, ease: "easeOut" }}
+                      className="absolute right-0 top-full mt-2 w-80 bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden origin-top-right"
+                    >
+                      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50/50">
+                        <h3 className="font-black text-secondary text-sm">تنبيهات المخزون</h3>
+                        {notifications.totalNotifications > 0 && (
+                          <span className="bg-red-100 text-red-600 text-xs font-bold px-2 py-0.5 rounded-full tabular-nums">
+                            {notifications.totalNotifications} تنبيه
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="max-h-80 overflow-y-auto divide-y divide-gray-50">
+                        {notifications.lowStockProducts > 0 ? (
+                          <>
+                            <div className="px-4 py-2 bg-amber-50/50 sticky top-0">
+                              <p className="text-xs font-bold text-amber-700 flex items-center gap-1">
+                                <span>⚠️</span> منتجات تحتاج إعادة تصنيع
+                              </p>
+                            </div>
+                            {lowStockProductsList.map((product, idx) => {
+                              const quantity = product.quantity || 0;
+                              const minStock = product.min_stock || 10;
+                              const isOutOfStock = quantity === 0;
+                              const isCritical = quantity > 0 && quantity <= minStock / 2;
+                              return (
+                                <motion.div
+                                  key={product.id}
+                                  initial={{ opacity: 0, x: 10 }}
+                                  animate={{ opacity: 1, x: 0 }}
+                                  transition={{ delay: idx * 0.05 }}
+                                >
+                                  <Link
+                                    href="/dashboard/inventory"
+                                    onClick={() => setShowNotifications(false)}
+                                    className="flex items-center gap-3 px-4 py-3 hover:bg-amber-50/60 transition-colors"
+                                  >
+                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${isOutOfStock || isCritical ? "bg-red-100" : "bg-amber-100"}`}>
+                                      <span className={isOutOfStock ? "text-red-600" : "text-amber-600"}>
+                                        {isOutOfStock ? "❌" : "⚠️"}
+                                      </span>
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="font-bold text-gray-800 text-sm truncate">{product.name}</p>
+                                      <p className="text-xs text-gray-500 mt-0.5">
+                                        {isOutOfStock ? `غير متوفر (الحد الأدنى: ${minStock})` : `متوفر ${quantity} / ${minStock} قطعة`}
+                                      </p>
+                                    </div>
+                                    <span className={`w-2 h-2 rounded-full shrink-0 animate-pulse ${isOutOfStock ? "bg-red-500" : "bg-amber-500"}`} />
+                                  </Link>
+                                </motion.div>
+                              );
+                            })}
+                            {notifications.lowStockProducts > 3 && (
+                              <div className="px-4 py-2 text-center bg-gray-50">
+                                <Link href="/dashboard/inventory" onClick={() => setShowNotifications(false)} className="text-xs text-primary font-semibold hover:underline">
+                                  + {notifications.lowStockProducts - 3} منتج ناقص آخر
+                                </Link>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <div className="flex flex-col items-center gap-2 py-10 text-center px-4">
+                            <div className="w-12 h-12 bg-green-100 rounded-2xl flex items-center justify-center">
+                              <span className="text-2xl">✅</span>
+                            </div>
+                            <p className="text-gray-500 text-sm font-medium">المخزون ممتاز</p>
+                            <p className="text-gray-400 text-xs">لا توجد منتجات ناقصة حالياً</p>
+                          </div>
+                        )}
+                      </div>
+
                       {notifications.totalNotifications > 0 && (
-                        <span className="bg-red-100 text-red-600 text-xs font-bold px-2 py-0.5 rounded-full tabular-nums">
-                          {notifications.totalNotifications} جديد
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="max-h-72 overflow-y-auto divide-y divide-gray-50">
-                      {notifications.pendingOrders > 0 && (
-                        <Link
-                          href="/dashboard/orders"
-                          onClick={() => setShowNotifications(false)}
-                          className="flex items-center gap-3 px-4 py-3.5 hover:bg-amber-50/60 transition-colors"
-                        >
-                          <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center shrink-0">
-                            {Icons.orders}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-bold text-gray-800 text-sm">طلبات بانتظار المراجعة</p>
-                            <p className="text-xs text-gray-500 mt-0.5">
-                              <span className="font-black text-amber-600 tabular-nums">{notifications.pendingOrders}</span> طلب جديد
-                            </p>
-                          </div>
-                          <span className="w-2 h-2 bg-amber-400 rounded-full shrink-0 animate-pulse" />
-                        </Link>
-                      )}
-
-                      {notifications.newMessages > 0 && (
-                        <Link
-                          href="/dashboard/messages"
-                          onClick={() => setShowNotifications(false)}
-                          className="flex items-center gap-3 px-4 py-3.5 hover:bg-blue-50/60 transition-colors"
-                        >
-                          <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center shrink-0">
-                            {Icons.messages}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-bold text-gray-800 text-sm">رسائل غير مقروءة</p>
-                            <p className="text-xs text-gray-500 mt-0.5">
-                              <span className="font-black text-blue-600 tabular-nums">{notifications.newMessages}</span> رسالة جديدة
-                            </p>
-                          </div>
-                          <span className="w-2 h-2 bg-blue-400 rounded-full shrink-0 animate-pulse" />
-                        </Link>
-                      )}
-
-                      {notifications.totalNotifications === 0 && (
-                        <div className="flex flex-col items-center gap-2 py-10 text-center px-4">
-                          <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center">
-                            {Icons.bell}
-                          </div>
-                          <p className="text-gray-500 text-sm font-medium">لا توجد إشعارات جديدة</p>
-                          <p className="text-gray-400 text-xs">كل شيء على ما يرام ✓</p>
+                        <div className="px-4 py-2.5 border-t border-gray-100 bg-gray-50/50 text-center">
+                          <Link href="/dashboard/inventory" onClick={() => setShowNotifications(false)} className="text-primary text-xs font-bold hover:text-primary-dark transition-colors">
+                            عرض جميع المنتجات الناقصة ←
+                          </Link>
                         </div>
                       )}
-                    </div>
-
-                    {notifications.totalNotifications > 0 && (
-                      <div className="px-4 py-2.5 border-t border-gray-100 bg-gray-50/50 text-center">
-                        <button
-                          onClick={() => { setShowNotifications(false); router.push("/dashboard/orders"); }}
-                          className="text-primary text-xs font-bold hover:text-primary-dark transition-colors"
-                        >
-                          عرض جميع الإشعارات ←
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
-              {/* Divider */}
               <div className="w-px h-7 bg-gray-200 hidden sm:block" />
 
-              {/* Admin profile */}
+              {/* Profile */}
               <div className="flex items-center gap-2.5">
                 <div className="hidden sm:block text-left">
                   <p className="text-xs font-black text-secondary leading-tight">{adminName}</p>
-                  <p className="text-[10px] text-gray-400 leading-tight">مدير النظام</p>
+                  <p className="text-[10px] text-gray-400 leading-tight">{roleLabel}</p>
                 </div>
                 <div className="w-9 h-9 bg-gradient-to-br from-primary to-primary-dark rounded-xl flex items-center justify-center text-white font-black text-xs shadow-md">
                   {initials}
