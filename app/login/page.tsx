@@ -1,4 +1,4 @@
-// app/login/page.tsx
+ // app/login/page.tsx
 "use client";
 
 import Link from "next/link";
@@ -80,11 +80,11 @@ export default function LoginPage() {
 
       toast.success(`مرحباً ${userName} 👋`);
 
-      // ✅ الصح: push أولاً، refresh ثانياً (أو اتركه للـ onAuthStateChange في الـ Navbar)
+      // ✅ الادمن → داشبورد | المستخدم العادي → البروفايل
       if (userRole === "admin") {
         router.push("/dashboard");
       } else {
-        router.push("/");
+        router.push("/profile");
       }
     }
 

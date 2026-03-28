@@ -48,20 +48,22 @@ const FormInput = ({
 
 // ─── الصفحة ───────────────────────────────────────────────────────────────────
 export default function SignupPage() {
-  const router = useRouter();
+  const router   = useRouter();
   const supabase = createClient();
-  const [isLoading, setIsLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+
+  const [isLoading,           setIsLoading]           = useState(false);
+  const [showPassword,        setShowPassword]        = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    password: "",
+    name:            "",
+    email:           "",
+    phone:           "",
+    password:        "",
     confirmPassword: "",
-    agreeTerms: false,
+    agreeTerms:      false,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+
   const accountRole = resolveUserRole(formData.email, null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -107,14 +109,13 @@ export default function SignupPage() {
 
     // ── 1. إنشاء الحساب في Supabase Auth ──────────────────────────────────────
     const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-      email: formData.email,
+      email:    formData.email,
       password: formData.password,
       options: {
-        // بنبعت البيانات في الـ metadata عشان نحفظها لو الـ insert اشتغل في الـ trigger
         data: {
-          name: formData.name,
+          name:  formData.name,
           phone: formData.phone || null,
-          role: accountRole,
+          role:  accountRole,
         },
       },
     });
@@ -130,32 +131,32 @@ export default function SignupPage() {
     }
 
     if (signUpData.user) {
-      // ── 2. upsert في profiles (أكثر أماناً من insert) ─────────────────────
-      //    لو عندك RLS: تأكد إن في policy تسمح للـ authenticated user يكتب لـ id = auth.uid()
+      // ── 2. upsert في profiles ──────────────────────────────────────────────
       const { error: profileError } = await supabase
         .from("profiles")
         .upsert(
           {
-            id: signUpData.user.id,
+            id:    signUpData.user.id,
             email: formData.email,
-            name: formData.name.trim(),
+            name:  formData.name.trim(),
             phone: formData.phone.trim() || null,
-            role: accountRole,
+            role:  accountRole,
           },
           { onConflict: "id" }
         );
 
       if (profileError) {
-        // ── لو فشل الـ upsert — ممكن يكون RLS ── بنطلع تحذير بس مش error فادح
         console.warn("Profile upsert failed:", profileError.message);
-        // الـ user اتعمل في Auth بنجاح، المشكلة في الـ profiles table بس
-        // ممكن تشتغل عليها لاحقاً عن طريق Supabase trigger أو بعد login
-        toast.success("تم إنشاء الحساب! يمكنك تسجيل الدخول الآن");
-      } else {
-        toast.success("تم إنشاء الحساب بنجاح! سجل دخولك الآن 🎉");
       }
 
-      router.push("/login?registered=true");
+      // ── 3. حفظ البيانات في localStorage ───────────────────────────────────
+      localStorage.setItem("userName", formData.name.trim());
+      localStorage.setItem("userRole", accountRole);
+
+      toast.success(`أهلاً ${formData.name.trim()}! تم إنشاء حسابك بنجاح 🎉`);
+
+      // ── 4. توجيه مباشر للبروفايل (الـ session اتعملت تلقائياً) ────────────
+      router.push("/profile");
     }
 
     setIsLoading(false);
@@ -187,24 +188,22 @@ export default function SignupPage() {
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/6 rounded-full blur-3xl" />
         <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-secondary/5 rounded-full blur-3xl" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] bg-gradient-to-r from-primary/4 to-secondary/4 rounded-full blur-3xl" />
       </div>
 
       <div className="relative z-10 w-full max-w-md animate-fade-in-up">
-        <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl p-8 border border-gray-100">
+        <div className="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden">
 
           {/* Header */}
-          <div className="text-center mb-7">
-            <div className="w-20 h-20 bg-gradient-to-br from-primary to-primary-dark rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-              <span className="text-white text-3xl font-black">م</span>
+          <div className="bg-gradient-to-br from-secondary to-secondary-dark px-8 pt-8 pb-6 text-center">
+            <div className="w-16 h-16 bg-gradient-to-br from-primary to-primary-dark rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+              <span className="text-white text-2xl font-black">م</span>
             </div>
-            <h1 className="text-2xl font-black text-secondary">إنشاء حساب جديد</h1>
-            <p className="text-gray-400 text-sm mt-1.5">
-              انضم إلينا لمتابعة طلباتك والحصول على عروض حصرية
-            </p>
+            <h1 className="text-2xl font-black text-white">إنشاء حساب جديد</h1>
+            <p className="text-white/55 text-sm mt-1">انضم إلينا وتابع طلباتك بسهولة</p>
           </div>
 
-          <div className="space-y-4">
+          {/* Form */}
+          <div className="px-8 py-7 space-y-5">
 
             {/* الاسم */}
             <FormInput
@@ -228,7 +227,7 @@ export default function SignupPage() {
               />
             </FormInput>
 
-            {/* البريد الإلكتروني */}
+            {/* البريد */}
             <FormInput
               label="البريد الإلكتروني"
               required
@@ -250,7 +249,7 @@ export default function SignupPage() {
               />
             </FormInput>
 
-            {/* رقم الهاتف */}
+            {/* الهاتف */}
             <FormInput
               label="رقم الهاتف"
               hint="اختياري — للتواصل معك بخصوص طلباتك"
@@ -397,8 +396,8 @@ export default function SignupPage() {
           </div>
 
           {/* Footer */}
-          <div className="mt-6 pt-5 border-t border-gray-100 text-center space-y-3">
-            <p className="text-gray-500 text-sm">
+          <div className="px-8 pb-7 pt-0 border-t border-gray-100 text-center space-y-3 mt-2">
+            <p className="text-gray-500 text-sm pt-5">
               لديك حساب بالفعل؟{" "}
               <Link href="/login" className="text-primary font-black hover:text-primary-dark transition-colors">
                 تسجيل الدخول
