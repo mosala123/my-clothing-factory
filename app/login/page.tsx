@@ -1,9 +1,9 @@
- // app/login/page.tsx
+// app/login/page.tsx
 "use client";
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { resolveUserRole } from "@/lib/auth-role";
 import { createClient } from "@/lib/supabase/client";
 import toast from "react-hot-toast";
@@ -29,7 +29,7 @@ const inputCls = (hasError = false) =>
       : "border-gray-200 focus:border-primary focus:ring-2 focus:ring-primary/20"
   }`;
 
-export default function LoginPage() {
+function LoginForm() {
   const router       = useRouter();
   const searchParams = useSearchParams();
   const supabase     = createClient();
@@ -80,7 +80,6 @@ export default function LoginPage() {
 
       toast.success(`مرحباً ${userName} 👋`);
 
-      // ✅ الادمن → داشبورد | المستخدم العادي → البروفايل
       if (userRole === "admin") {
         router.push("/dashboard");
       } else {
@@ -232,5 +231,19 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center shadow-lg animate-pulse">
+          <span className="text-white text-2xl font-black">م</span>
+        </div>
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   );
 }
